@@ -1,0 +1,15 @@
+[project]
+name = "multi-agent-systems"
+version = "0.1.0"
+description = "Multi-Agent Systems cooperative course projects"
+authors = [
+    { name = "culbec", email = "profir.alexx@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.4.3",
+    "pandas>=3.0.1",
+    "plotly>=6.6.0",
+    "spade>=4.0.3",
+    "uvloop>=0.21.0",
+]
