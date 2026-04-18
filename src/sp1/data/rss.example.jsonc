@@ -1,0 +1,34 @@
+{
+    "huffpost": {
+        "feed": "https://www.huffpost.com/section/world-news/feed",
+        "password": "huffpost123"
+    },
+    "nytimes": {
+        "feed": "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
+        "password": "nytimes123"
+    },
+    "foxnews": {
+        "feed": "http://feeds.foxnews.com/foxnews/latest",
+        "password": "foxnews123"
+    },
+    "washington_post": {
+        "feed": "http://feeds.washingtonpost.com/rss/world",
+        "password": "wpost123"
+    },
+    "cnn": {
+        "feed": "http://rss.cnn.com/rss/edition.rss",
+        "password": "cnn123"
+    },
+    "yahoo_news": {
+        "feed": "https://news.yahoo.com/rss/mostviewed",
+        "password": "yahoo_news123"
+    },
+    "cnbc": {
+        "feed": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+        "password": "cnbc123"
+    },
+    "politico": {
+        "feed": "https://rss.politico.com/playbook.xml",
+        "password": "politico123"
+    }
+}

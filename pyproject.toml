@@ -7,9 +7,17 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "feedparser>=6.0.12",
+    "newspaper4k[nlp]>=0.9.5",
     "numpy>=2.4.3",
     "pandas>=3.0.1",
     "plotly>=6.6.0",
+    "pydantic>=2.13.2",
+    "pytest>=9.0.3",
     "spade>=4.0.3",
+    "spade-llm>=0.2.0",
     "uvloop>=0.21.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

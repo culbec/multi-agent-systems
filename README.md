@@ -17,7 +17,24 @@ A [Project Draft](./docs/draft/MAS_Project_Draft_Report_v2.docx) is available fo
 
 ### SP1 - Open-Source Framework
 
-**TODO: Multi-Agent News Network**
+This project uses [SPADE](https://spadeagents.eu) to create a virtual _newspaper kiosk_. It leverages the framework's built-in FIPA ACL communication design and XMPP communication protocol to create a **hub-and-spoke** topology used to query news from multiple public RSS feeds to serve the user's needs.
+
+#### Starting SPADE
+
+You can start the SPADE server by using the [start_spade.sh](./src/sp1/scripts/start_spade.sh) script. It allows specification of the database path and creation of intermediary paths if the database directory does not exist.
+
+#### Starting the Application
+
+You can test the Crawler agent for instance by using the following command:
+
+```bash
+cd ...repo_root...
+PYTHONPATH=src uv run python -m sp1.agents.crawler.crawler
+```
+
+Every agent has a main entrypoint to be able to test them according to their capabilities. The Crawler agent will run periodically and update a `results.json` file with the scraped article results from a collection of predefined RSS/Atom feeds.
+
+**TODO**: it should spin up [NiceGUI](https://github.com/zauberzeug/nicegui) or [StreamLit](https://streamlit.io/) interface because they are lightweight and easy to use.
 
 ### SP2 - Scratch Framework / DAI Technique
 
