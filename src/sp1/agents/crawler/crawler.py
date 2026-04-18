@@ -115,8 +115,12 @@ class CrawlerAgent(Agent):
             return self._entry_plain(link)
 
         entry_id = entry.get("id")
-        if isinstance(entry_id, str) and entry_id.strip():
-            return entry_id.strip()
+        if isinstance(entry_id, str):
+            candidate = entry_id.strip()
+            if candidate:
+                lower = candidate.lower()
+                if lower.startswith(("http://", "https://")):
+                    return candidate
 
         for link_rec in entry.get("links", []) or []:
             href = (link_rec.get("href") or "").strip()

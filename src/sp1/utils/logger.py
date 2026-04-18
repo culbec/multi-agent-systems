@@ -33,7 +33,7 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     logger.addHandler(console_handler)
 
     if not LOG_FILE_PATH.parent.exists():
-        LOG_FILE_PATH.parent.mkdir(exist_ok=True)
+        LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         rotating_file_handler = RotatingFileHandler(

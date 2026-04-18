@@ -43,7 +43,7 @@ class NormalizedArticleModel(ArticleModel):
     """Full article record produced after RSS metadata plus newspaper HTML fetch/parse."""
 
     article_id: str = Field(
-        description="Unique id (UUID string) for this article in the shared candidate pool.",
+        description="Unique stable hash (MD5 hex digest string) for this article in the shared candidate pool.",
     )
     source_id: str = Field(
         ...,
