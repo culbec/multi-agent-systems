@@ -11,40 +11,221 @@ A [Project Draft](./docs/draft/MAS_Project_Draft_Report_v2.docx) is available fo
 - [Overview](#overview)
   - [SP1 - Open-Source Framework](#sp1---open-source-framework)
   - [SP2 - Scratch Framework / DAI Technique](#sp2---scratch-framework--dai-technique)
+- [SP1 Specification](#sp1-specification)
+  - [Architecture](#architecture)
+  - [Agent Roles](#agent-roles)
+  - [Communication](#communication)
+  - [Running SP1](#running-sp1)
+    - [Prerequisites](#prerequisites)
+    - [Starting the SPADE Server](#starting-the-spade-server)
+    - [CLI Mode](#cli-mode)
+    - [Gradio Mode](#gradio-mode)
+  - [Configuration](#configuration)
+  - [LLM Customisation](#llm-customisation)
 - [Setup](#setup)
 
 ## Overview
 
 ### SP1 - Open-Source Framework
 
-This project uses [SPADE](https://spadeagents.eu) to create a virtual _newspaper kiosk_. It leverages the framework's built-in FIPA ACL communication design and XMPP communication protocol to create a **hub-and-spoke** topology used to query news from multiple public RSS feeds to serve the user's needs.
+SP1 implements a **Multi-Agent News Aggregation System** using the [SPADE](https://spadeagents.eu) framework. It continuously collects, filters, unifies, ranks, summarises, and presents news articles from multiple public RSS feeds in response to user-declared interests or specific queries.
 
-#### Starting SPADE
+The system addresses key challenges inherent to news aggregation:
 
-You can start the SPADE server by using the [start_spade.sh](./src/sp1/scripts/start_spade.sh) script. It allows specification of the database path and creation of intermediary paths if the database directory does not exist.
+- **Source heterogeneity** — Multiple providers serve news with different formats and update frequencies.
+- **Redundancy** — The same topic is reported by many sources, producing near-duplicate articles.
+- **Relevance** — Not all collected articles are equally relevant to the user's desires.
+- **Credibility** — Sources vary in reliability; the system assesses trustworthiness rather than treating all sources as equivalent.
+- **Information overload** — Concise LLM-generated summaries allow the user to understand each provider's point of view.
+- **Timeliness** — Supports both on-demand queries and periodic standing subscriptions with autonomous background refreshes.
+- **Personalisation** — Adapts to the user's preferences during interaction by learning which sources and topics consistently produce relevant results.
 
-#### Starting the Application
-
-You can test the Crawler agent for instance by using the following command:
-
-```bash
-cd ...repo_root...
-PYTHONPATH=src uv run python -m sp1.agents.crawler.crawler
-```
-
-Every agent has a main entrypoint to be able to test them according to their capabilities. The Crawler agent will run periodically and update a `results.json` file with the scraped article results from a collection of predefined RSS/Atom feeds.
-
-**TODO**: it should spin up [NiceGUI](https://github.com/zauberzeug/nicegui) or [StreamLit](https://streamlit.io/) interface because they are lightweight and easy to use.
+The architecture follows a **hub-and-spoke** topology with a shared **blackboard** for coordination and **FIPA ACL** messages for targeted inter-agent communication.
 
 ### SP2 - Scratch Framework / DAI Technique
 
 **TODO: Disaster Grid**
 
+---
+
+## SP1 Specification
+
+### Architecture
+
+SP1 is a society of cooperating agents rather than a centrally orchestrated pipeline. Each agent owns its decisions within its scope, perceives the environment through the blackboard, and acts autonomously.
+
+```
++-----------+      +-----------+      +-----------+
+|  Crawler  |      |  Crawler  |  ... |  Crawler  |
++-----+-----+      +-----+-----+      +-----+-----+
+      |                  |                  |
+      +------------------+------------------+
+                         |
+                    +----v----+  Candidate Pool
+                    | Blackboard |
+                    +----+----+
+      +------------------+------------------+
+      |                  |                  |
++-----v-----+      +-----v-----+      +-----v-----+
+| Relevance |      | Credibility|      |  Novelty  |
+|  Analyst  |      |  Analyst   |      |  Analyst  |
++-----+-----+      +-----+-----+      +-----+-----+
+      |                  |                  |
+      +------------------+------------------+
+                         |
+                    +----v----+  Score Board
+                    | Editor  |
+                    +----+----+
+                         |
+                    +----v----+
+                    |  Clerk  |  <->  User (CLI / Gradio)
+                    +---------+
+```
+
+### Agent Roles
+
+
+| Agent                       | Role                   | Behaviour                                                                                                                                                                                                                                                                                                 |
+| --------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CrawlerAgent**            | Field reporter         | One instance per configured RSS source. Periodically polls the feed, extracts and normalises article entries, deduplicates them, and deposits them into the shared candidate pool. Maintains a source-health flag.                                                                                        |
+| **RelevanceAnalystAgent**   | Relevance specialist   | Scores how well an article matches a filter's keywords and categories using keyword-frequency matching blended with per-user preference weights.                                                                                                                                                          |
+| **CredibilityAnalystAgent** | Credibility specialist | Scores article trustworthiness combining source reputation, cross-source corroboration, and light content heuristics (length, quoted sources, clickbait penalty).                                                                                                                                         |
+| **NoveltyAnalystAgent**     | Novelty specialist     | Scores how different an article is from already-delivered content and from other articles in the pool, penalising redundancy and near-duplicates.                                                                                                                                                         |
+| **EditorAgent**             | Managing editor        | Aggregates the independent judgments of the three Analysts using a configurable weighting policy. Composes diverse bundles respecting delivery preferences. Generates per-article summaries via an LLM (Ollama). Autonomously decides when standing-filter readiness criteria are met and pushes bundles. |
+| **ClerkAgent**              | Counter staff          | The sole user-facing agent. Receives filter declarations, validates them, registers them on the blackboard, and notifies the Editor. Receives composed bundles and delivers them to the user. Queues deliveries for offline users. Solicits feedback and proactively suggests filter adjustments.         |
+
+
+### Communication
+
+Agents coordinate through two complementary channels:
+
+1. **Blackboard** — A shared JSON-persisted in-memory structure holding:
+  - Candidate pool (articles from Crawlers)
+  - Score board (dimension-specific score vectors from Analysts)
+  - Filter registry (active one-off and standing filters)
+  - User profiles (preferences, standing filters, delivery history)
+  - Source-reputation table (updated by Credibility Analyst)
+  - Pending-delivery queue (for offline users)
+2. **FIPA ACL Messages** — Targeted events over SPADE's XMPP layer:
+  - `Clerk INFORM Editor` — new/edited filter
+  - `Clerk REQUEST Editor` — one-off bundle request
+  - `Editor INFORM Clerk` — composed bundle delivery
+  - `Editor FAILURE Clerk` — inability to compose bundle
+  - `Crawler INFORM Editor` — source-health update
+
+### Running SP1
+
+#### Prerequisites
+
+1. Install `uv`, `ruff`, and `ty` from [astral.sh](https://astral.sh/).
+2. Install [pyenv](https://github.com/pyenv/pyenv) to manage Python versions. This project uses **Python 3.12.13**.
+3. Install and start [Ollama](https://ollama.com) locally (or point to a remote instance via `.env`).
+4. Start a local SPADE XMPP server.
+
+```bash
+# Sync dependencies
+uv sync --frozen
+```
+
+#### Starting the SPADE Server
+
+```bash
+# Using the provided script
+./src/sp1/scripts/start_spade.sh
+
+# Or directly
+uv run spade run --db data/spade/server.db
+```
+
+#### CLI Mode
+
+Run the full MAS from the terminal:
+
+```bash
+# Using the convenience script
+./src/sp1/scripts/run_sp1.sh
+
+# Or directly
+PYTHONPATH=src uv run python -m sp1.cli run
+```
+
+The CLI will spawn all agents (Crawlers, Analysts, Editor, Clerk), keep the blackboard persisted to `data/blackboard.json`, and shut down gracefully on `Ctrl+C`.
+
+Show current configuration:
+
+```bash
+PYTHONPATH=src uv run python -m sp1.cli config
+```
+
+#### Gradio Mode
+
+Run the web-based UI for interactive filter configuration, chat-based querying, blackboard inspection, and source-health monitoring:
+
+```bash
+PYTHONPATH=src uv run python -m sp1.ui.gradio_app
+```
+
+Then open your browser at `http://localhost:7860`.
+
+The UI provides:
+
+- **Chat window** — Interact with the Clerk agent using commands like `/filter AI, technology`, `/standing climate`, `/feedback article_id true`, `/help`.
+- **News Feed** — Browse all articles in the candidate pool, even without filters.
+- **Filters panel** — View and manage active filters.
+- **Blackboard inspector** — View the score board with analyst dimension scores.
+- **Source health dashboard** — Real-time status of all RSS sources.
+- **Configuration** — View current LLM model and system status.
+
+Unlike Streamlit, Gradio uses a persistent server that does not re-execute on every interaction, making it compatible with long-lived SPADE agents.
+
+### Configuration
+
+Create a `src/sp1/.env` file (see `.env.example`):
+
+```bash
+SPADE_SERVER=localhost
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_SUMMARIZATION_MODEL=mistral
+OLLAMA_TEMPERATURE=0.3
+OLLAMA_MAX_TOKENS=512
+OLLAMA_FALLBACK_TO_EXTRACT=true
+RSS_FEEDS_PATH=./src/sp1/data/rss.example.jsonc
+BLACKBOARD_PATH=data/blackboard.json
+```
+
+### LLM Customisation
+
+The Editor agent uses Ollama for per-article summarisation. You can customise the model via environment variables:
+
+
+| Variable                     | Default                     | Description                                      |
+| ---------------------------- | --------------------------- | ------------------------------------------------ |
+| `OLLAMA_SUMMARIZATION_MODEL` | `mistral`                   | Model tag for summarisation                      |
+| `OLLAMA_BASE_URL`            | `http://localhost:11434/v1` | Ollama API endpoint                              |
+| `OLLAMA_TEMPERATURE`         | `0.3`                       | Sampling temperature                             |
+| `OLLAMA_MAX_TOKENS`          | `512`                       | Max tokens per summary                           |
+| `OLLAMA_FALLBACK_TO_EXTRACT` | `true`                      | Fallback to article `summary` field if LLM fails |
+
+
+**Recommended models:**
+
+- `mistral` (7B) — Fast, high-quality summaries (default)
+- `llama3.2` (3B) — Very fast, decent quality for short summaries
+- `qwen2.5:7b` — Excellent instruction following and multilingual
+
+Change at runtime:
+
+```bash
+OLLAMA_SUMMARIZATION_MODEL=llama3.2 PYTHONPATH=src uv run python -m sp1.cli run
+```
+
+---
+
 ## Setup
 
 Install `uv`, `ruff`, and `ty` from [astral.sh](https://astral.sh/). These are tools for Python package management, formatting, and linting + typechecking.
 
-I recommend you to use [pyenv](https://github.com/pyenv/pyenv) to manage your Python versions. This project uses **Python 3.12.10**.
+I recommend you to use [pyenv](https://github.com/pyenv/pyenv) to manage your Python versions. This project uses **Python 3.12.13**.
 
 To initialize the virtual environment run the following command.
 
@@ -69,3 +250,4 @@ Use the following commands to access information on how to use `ruff` and `ty` f
 ruff --help
 ty --help
 ```
+
