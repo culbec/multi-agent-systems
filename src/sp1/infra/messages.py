@@ -47,6 +47,7 @@ class BundleDeliveryMessage(BaseModel):
     bundle_id: str = Field(...)
     filter_id: str = Field(...)
     user_id: str = Field(...)
+    request_id: str | None = Field(default=None, description="Correlation id from the original BundleRequestMessage.")
     trigger: Literal["one_off", "standing_push"] = Field(...)
     composed_at: str = Field(default="")
     articles: list[dict[str, object]] = Field(

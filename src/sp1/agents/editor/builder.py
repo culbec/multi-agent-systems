@@ -4,6 +4,7 @@ from sp1.agents.agent_builder import AgentBuilder
 from sp1.agents.editor.editor import EditorAgent
 from sp1.agents.models.editor_params import EditorParams
 from sp1.infra.blackboard import Blackboard
+from sp1.infra.config import SP1Config
 from sp1.infra.llm_config import LLMConfig
 
 
@@ -17,7 +18,7 @@ class EditorBuilder(AgentBuilder):
         self._relevance_weight: float = 0.5
         self._credibility_weight: float = 0.3
         self._novelty_weight: float = 0.2
-        self._min_credibility_threshold: float = 0.15
+        self._min_credibility_threshold: float = SP1Config().score_min_credibility
         self._llm_config: LLMConfig = LLMConfig()
 
     def with_blackboard(self, blackboard: Blackboard) -> EditorBuilder:

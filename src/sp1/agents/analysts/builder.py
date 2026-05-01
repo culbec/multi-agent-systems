@@ -6,6 +6,7 @@ from sp1.agents.analysts.novelty_analyst import NoveltyAnalystAgent
 from sp1.agents.analysts.relevance_analyst import RelevanceAnalystAgent
 from sp1.agents.models.analyst_params import AnalystParams
 from sp1.infra.blackboard import Blackboard
+from sp1.infra.config import SP1Config
 
 
 class AnalystBuilder(AgentBuilder):
@@ -16,7 +17,7 @@ class AnalystBuilder(AgentBuilder):
         self._dimension = dimension
         self._blackboard: Blackboard | None = None
         self._editor_jid: str | None = None
-        self._poll_interval_seconds: int = 30
+        self._poll_interval_seconds: int = SP1Config().interval_analyst_poll
 
     def with_blackboard(self, blackboard: Blackboard) -> AnalystBuilder:
         self._blackboard = blackboard

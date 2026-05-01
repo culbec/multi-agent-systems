@@ -6,7 +6,9 @@ cd "$(dirname "$0")/../../.." || exit 1
 
 # Default .env loading
 if [ -f src/sp1/.env ]; then
-    export $(grep -v '^#' src/sp1/.env | xargs)
+    set -a
+    source src/sp1/.env
+    set +a
 fi
 
 PYTHONPATH=src uv run python -m sp1.cli run "$@"

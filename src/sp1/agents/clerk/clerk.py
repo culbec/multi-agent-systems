@@ -12,6 +12,7 @@ from spade.behaviour import CyclicBehaviour, OneShotBehaviour, PeriodicBehaviour
 from spade.message import Message
 
 from sp1.agents.models.clerk_params import ClerkParams
+from sp1.infra.config import SP1Config
 from sp1.infra.messages import (
     BundleDeliveryMessage,
     BundleFailureMessage,
@@ -38,6 +39,7 @@ class ClerkAgent(Agent):
     def __init__(self, params: ClerkParams) -> None:
         super().__init__(params.jid, params.password)
         self.log = get_logger(str(self.jid))
+        self._config = SP1Config()
         self._blackboard = params.blackboard
         self._editor_jid = params.editor_jid
         self._user_id = params.user_id
@@ -150,7 +152,7 @@ class ClerkAgent(Agent):
         self.add_behaviour(receiver)
 
         try:
-            bundle = await asyncio.wait_for(receiver.wait_for_reply(), timeout=30.0)
+            bundle = await asyncio.wait_for(receiver.wait_for_reply(), timeout=self._config.timeout_bundle_request)
             return bundle
         except asyncio.TimeoutError:
             self.log.warning("Bundle request %s timed out", request_id)
@@ -187,6 +189,15 @@ class ClerkAgent(Agent):
             self.log.warning("Invalid bundle delivery: %s", exc)
             return
 
+        bundle_user_id = bundle.user_id
+        if bundle_user_id != self._user_id:
+            self.log.warning(
+                "Bundle user_id mismatch: expected %s, got %s (bundle=%s)",
+                self._user_id,
+                bundle_user_id,
+                bundle.bundle_id,
+            )
+
         self.log.info(
             "Received bundle %s (trigger=%s) with %d articles",
             bundle.bundle_id,
@@ -196,14 +207,17 @@ class ClerkAgent(Agent):
 
         # Record delivery in blackboard
         for art in bundle.articles:
-            await self._blackboard.record_delivery(self._user_id, art["article_id"], bundle.bundle_id)
+            await self._blackboard.record_delivery(bundle_user_id, art["article_id"], bundle.bundle_id)
+
+        # Record bundle for later query
+        await self._blackboard.record_bundle(bundle.model_dump())
 
         # If session is active, deliver immediately; otherwise queue
         if self._session_active:
             await self._pending_bundles.put(bundle.model_dump())
         else:
-            await self._blackboard.enqueue_delivery(self._user_id, bundle.model_dump())
-            self.log.info("Queued bundle %s for offline user %s", bundle.bundle_id, self._user_id)
+            await self._blackboard.enqueue_delivery(bundle_user_id, bundle.model_dump())
+            self.log.info("Queued bundle %s for offline user %s", bundle.bundle_id, bundle_user_id)
 
         # Update last activity
         self._last_activity_at = datetime.now(timezone.utc)
@@ -239,7 +253,8 @@ class ClerkAgent(Agent):
             feedback_history = await self._blackboard.get_feedback_history(self._user_id)
 
             # Simple heuristic: if many articles delivered but low feedback, suggest narrowing
-            if len(delivery_history) > 20 and len(feedback_history) < 5:
+            cfg = self._config
+            if len(delivery_history) > cfg.suggestion_delivery_threshold and len(feedback_history) < cfg.suggestion_feedback_threshold:
                 suggestion = {
                     "type": "suggestion",
                     "filter_id": f["filter_id"],
@@ -299,6 +314,13 @@ class ClerkAgent(Agent):
                 if perf == "inform":
                     try:
                         bundle = BundleDeliveryMessage.model_validate_json(reply.body)
+                        if bundle.request_id is not None and bundle.request_id != self._request_id:
+                            self.agent.log.debug(
+                                "Ignoring bundle delivery with mismatched request_id: got=%s expected=%s",
+                                bundle.request_id,
+                                self._request_id,
+                            )
+                            continue
                         if not self._future.done():
                             self._future.set_result(bundle.model_dump())
                         return
@@ -308,6 +330,13 @@ class ClerkAgent(Agent):
                 elif perf == "failure":
                     try:
                         failure = BundleFailureMessage.model_validate_json(reply.body)
+                        if failure.request_id is not None and failure.request_id != self._request_id:
+                            self.agent.log.debug(
+                                "Ignoring bundle failure with mismatched request_id: got=%s expected=%s",
+                                failure.request_id,
+                                self._request_id,
+                            )
+                            continue
                         self.agent.log.warning("Bundle request failed: %s", failure.reason)
                     except Exception:
                         pass
@@ -356,4 +385,4 @@ class ClerkAgent(Agent):
         self.add_behaviour(self._sender)
         self.add_behaviour(self.IncomingMessageHandler())
         self.add_behaviour(self.SessionTimeoutChecker(period=self._session_timeout_seconds))
-        self.add_behaviour(self.SuggestionGenerator(period=300))
+        self.add_behaviour(self.SuggestionGenerator(period=self._config.interval_suggestion_generator))

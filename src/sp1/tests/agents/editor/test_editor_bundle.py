@@ -54,6 +54,19 @@ class TestEditorAggregateScores:
         editor = _make_editor(bb)
         assert editor._aggregate_scores({}) == 0.0
 
+    def test_zero_weight_sum(self) -> None:
+        bb = Blackboard()
+        editor = _make_editor(bb)
+        # Temporarily set all weights to zero
+        original_weights = (editor._relevance_weight, editor._credibility_weight, editor._novelty_weight)
+        editor._relevance_weight = 0.0
+        editor._credibility_weight = 0.0
+        editor._novelty_weight = 0.0
+        try:
+            assert editor._aggregate_scores({"relevance": 0.8, "credibility": 0.6, "novelty": 0.4}) == 0.0
+        finally:
+            editor._relevance_weight, editor._credibility_weight, editor._novelty_weight = original_weights
+
 
 class TestEditorConflictResolution:
     def test_high_relevance_low_credibility(self) -> None:

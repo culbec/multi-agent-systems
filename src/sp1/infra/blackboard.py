@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import pathlib
+from collections import OrderedDict, deque
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from sp1.infra.config import SP1Config
 
 
 class Blackboard:
@@ -12,8 +16,10 @@ class Blackboard:
     Supports JSON persistence so the system can resume across restarts.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_pool_size: int | None = None) -> None:
+        self._config = SP1Config()
         self._lock = asyncio.Lock()
+        self._max_pool_size = max_pool_size if max_pool_size is not None else self._config.limit_pool_size
         self._candidate_pool: list[dict[str, Any]] = []
         self._source_health_flags: dict[str, dict[str, str]] = {}
         self._score_board: dict[str, dict[str, Any]] = {}
@@ -23,6 +29,9 @@ class Blackboard:
         self._pending_delivery_queue: dict[str, list[dict[str, Any]]] = {}
         self._delivery_history: dict[str, list[dict[str, Any]]] = {}
         self._feedback_history: dict[str, list[dict[str, Any]]] = {}
+        self._message_log: deque[dict[str, Any]] = deque(maxlen=self._config.message_log_maxlen)
+        self._bundle_registry: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._bundle_registry_maxlen = self._config.bundle_registry_maxlen
 
     ##############################
     # Candidate Pool
@@ -31,6 +40,8 @@ class Blackboard:
     async def add_articles(self, articles: list[dict[str, Any]]) -> None:
         async with self._lock:
             self._candidate_pool.extend(articles)
+            if len(self._candidate_pool) > self._max_pool_size:
+                self._candidate_pool = self._candidate_pool[-self._max_pool_size :]
 
     async def snapshot_candidate_pool(self) -> list[dict[str, Any]]:
         """Return a shallow copy of all articles in the candidate pool."""
@@ -52,10 +63,27 @@ class Blackboard:
             keyword_mode = f.get("keyword_mode", "any")
             categories = [c.lower() for c in f.get("categories", [])]
             sources = f.get("sources", [])
-            f.get("max_age_hours")
+            max_age_hours = f.get("max_age_hours")
+            cutoff: datetime | None = None
+            if max_age_hours is not None:
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
 
             results: list[dict[str, Any]] = []
             for article in self._candidate_pool:
+                # Age filter
+                if cutoff is not None:
+                    age_str = article.get("published_at") or article.get("fetched_at")
+                    if age_str:
+                        try:
+                            age_dt = datetime.fromisoformat(age_str)
+                            # Make naive timezone-aware for comparison
+                            if age_dt.tzinfo is None:
+                                age_dt = age_dt.replace(tzinfo=timezone.utc)
+                            if age_dt < cutoff:
+                                continue
+                        except (ValueError, TypeError):
+                            pass  # fail-open on unparseable timestamps
+
                 title = (article.get("title") or "").lower()
                 body = (article.get("body") or "").lower()
                 summary = (article.get("summary") or "").lower()
@@ -221,6 +249,10 @@ class Blackboard:
             queued = self._pending_delivery_queue.pop(user_id, [])
             return list(queued)
 
+    async def snapshot_pending_deliveries(self) -> dict[str, list[dict[str, Any]]]:
+        async with self._lock:
+            return {k: [dict(b) for b in v] for k, v in self._pending_delivery_queue.items()}
+
     ##############################
     # Delivery History
     ##############################
@@ -251,6 +283,59 @@ class Blackboard:
     async def get_feedback_history(self, user_id: str) -> list[dict[str, Any]]:
         async with self._lock:
             return list(self._feedback_history.get(user_id, []))
+
+    ##############################
+    # Message Log
+    ##############################
+
+    async def log_message(
+        self,
+        sender: str,
+        receiver: str,
+        performative: str,
+        body_preview: str,
+    ) -> None:
+        async with self._lock:
+            self._message_log.append(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "sender": sender,
+                    "receiver": receiver,
+                    "performative": performative,
+                    "body_preview": body_preview,
+                }
+            )
+
+    async def snapshot_message_log(self, limit: int = 200) -> list[dict[str, Any]]:
+        async with self._lock:
+            return list(self._message_log)[-limit:]
+
+    ##############################
+    # Bundle Registry
+    ##############################
+
+    async def record_bundle(self, bundle: dict[str, Any]) -> None:
+        bid = bundle.get("bundle_id")
+        if not bid:
+            return
+        async with self._lock:
+            self._bundle_registry[bid] = dict(bundle)
+            # Evict oldest bundles if over limit
+            while len(self._bundle_registry) > self._bundle_registry_maxlen:
+                self._bundle_registry.popitem(last=False)
+
+    async def get_bundle(self, bundle_id: str) -> dict[str, Any] | None:
+        async with self._lock:
+            entry = self._bundle_registry.get(bundle_id)
+            return dict(entry) if entry is not None else None
+
+    async def get_bundles_for_filter(self, filter_id: str) -> list[dict[str, Any]]:
+        async with self._lock:
+            return [dict(b) for b in self._bundle_registry.values() if b.get("filter_id") == filter_id]
+
+    async def snapshot_bundle_registry(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            return [dict(b) for b in self._bundle_registry.values()]
 
     ##############################
     # Persistence

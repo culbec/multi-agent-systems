@@ -1,4 +1,7 @@
-POLL_INTERVAL_SEC: int = 600
+from sp1.infra.config import SP1Config
 
-MAX_ARTICLES_PER_CRAWL: int = 50
+_cfg = SP1Config()
+
+POLL_INTERVAL_SEC: int = _cfg.interval_crawler_poll
+MAX_ARTICLES_PER_CRAWL: int = _cfg.limit_max_articles_per_crawl
 ONTOLOGY_CRAWLER: str = "news-aggregation-crawler"

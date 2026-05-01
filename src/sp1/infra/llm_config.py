@@ -17,8 +17,8 @@ class LLMConfig(BaseModel):
         description="Ollama model tag used by the Editor for article summarisation.",
     )
     base_url: str = Field(
-        default_factory=lambda: os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-        description="Ollama OpenAI-compatible API endpoint.",
+        default_factory=lambda: os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"),
+        description="Ollama native API endpoint.",
     )
     temperature: float = Field(
         default_factory=lambda: float(os.environ.get("OLLAMA_TEMPERATURE", "0.3")),

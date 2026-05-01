@@ -12,6 +12,7 @@ from spade.behaviour import CyclicBehaviour
 from spade.message import Message
 
 from sp1.agents.models.editor_params import EditorParams
+from sp1.infra.config import SP1Config
 from sp1.infra.messages import (
     BundleDeliveryMessage,
     BundleFailureMessage,
@@ -37,6 +38,7 @@ class EditorAgent(Agent):
     def __init__(self, params: EditorParams) -> None:
         super().__init__(params.jid, params.password)
         self.log = get_logger(str(self.jid))
+        self._config = SP1Config()
         self._blackboard = params.blackboard
         self._clerk_jid = params.clerk_jid
         self._relevance_weight = params.relevance_weight
@@ -107,11 +109,15 @@ class EditorAgent(Agent):
         credibility = scores.get("credibility", 0.0)
         novelty = scores.get("novelty", 0.0)
 
+        weight_sum = self._relevance_weight + self._credibility_weight + self._novelty_weight
+        if weight_sum == 0.0:
+            return 0.0
+
         total = (
             self._relevance_weight * relevance
             + self._credibility_weight * credibility
             + self._novelty_weight * novelty
-        ) / (self._relevance_weight + self._credibility_weight + self._novelty_weight)
+        ) / weight_sum
 
         return round(total, 4)
 
@@ -131,7 +137,7 @@ class EditorAgent(Agent):
         filter_id: str,
         user_id: str,
         trigger: str,
-        max_items: int = 10,
+        max_items: int | None = None,
     ) -> dict[str, Any] | None:
         """Read score board, aggregate, filter, summarise, and compose a bundle.
 
@@ -141,6 +147,8 @@ class EditorAgent(Agent):
         that a one-off ``/filter`` query always returns results when matching
         articles exist in the candidate pool.
         """
+        if max_items is None:
+            max_items = self._config.limit_bundle_max_items
         filter_ = await self._blackboard.get_filter(filter_id)
         if filter_ is None:
             return None
@@ -184,11 +192,10 @@ class EditorAgent(Agent):
         # Sort by aggregated score descending
         ranked.sort(key=lambda x: x[1], reverse=True)
 
-        # Select top items with diversity (skip articles flagged with severe conflict)
-        selected: list[dict[str, Any]] = []
-        seen_sources: set[str] = set()
+        # Select candidate articles (filtering + diversity) BEFORE summarising
+        articles_to_summarise: list[tuple[str, dict[str, Any], float, dict[str, float], str | None]] = []
         for aid, agg_score, scores, conflict in ranked:
-            if len(selected) >= max_items:
+            if len(articles_to_summarise) >= max_items:
                 break
 
             article = article_map.get(aid)
@@ -201,18 +208,37 @@ class EditorAgent(Agent):
 
             # Simple diversity: don't include more than 2 articles from the same source
             source_id = article.get("source_id", "")
-            source_count = sum(1 for s in selected if s.get("source_id") == source_id)
+            source_count = sum(1 for s in articles_to_summarise if s[1].get("source_id") == source_id)
             if source_count >= 2:
                 continue
 
-            summary = await self._summarise_article(article)
+            articles_to_summarise.append((aid, article, agg_score, scores, conflict))
+
+        # Summarise all candidate articles in parallel (with per-article timeout)
+        async def _summarise_with_timeout(art: dict[str, Any]) -> str:
+            try:
+                return await asyncio.wait_for(
+                    self._summarise_article(art),
+                    timeout=max(1.0, self._config.timeout_bundle_request / max(len(articles_to_summarise), 1)),
+                )
+            except asyncio.TimeoutError:
+                self.log.warning("Summarisation timed out for %s", art.get("article_id"))
+                return art.get("summary") or art.get("body", "")[:300]
+
+        summary_tasks = [_summarise_with_timeout(art) for _, art, _, _, _ in articles_to_summarise]
+        summaries = await asyncio.gather(*summary_tasks)
+
+        # Assemble selected articles with their summaries
+        selected: list[dict[str, Any]] = []
+        for idx, (aid, article, agg_score, scores, conflict) in enumerate(articles_to_summarise):
+            source_id = article.get("source_id", "")
             selected.append(
                 {
                     "article_id": aid,
                     "source_id": source_id,
                     "title": article.get("title", ""),
                     "url": article.get("url", ""),
-                    "summary": summary,
+                    "summary": summaries[idx],
                     "scores": {
                         "aggregated": agg_score,
                         "relevance": round(scores.get("relevance", 0.0), 4),
@@ -223,7 +249,6 @@ class EditorAgent(Agent):
                     "published_at": article.get("published_at", ""),
                 }
             )
-            seen_sources.add(source_id)
 
         if not selected:
             return None
@@ -329,26 +354,30 @@ class EditorAgent(Agent):
     ##############################
 
     async def _check_standing_filters(self, behaviour: CyclicBehaviour) -> None:
+        cfg = self._config
         standing = await self._blackboard.get_standing_filters()
         for f in standing:
             fid = f["filter_id"]
             delivery = f.get("delivery", {})
-            min_items = delivery.get("min_items_before_push", 3)
-            min_interval_minutes = delivery.get("min_interval_minutes", 60)
-            breaking_threshold = delivery.get("breaking_threshold", 0.95)
+            min_items = delivery.get("min_items_before_push", cfg.limit_min_items_before_push)
+            min_interval_minutes = delivery.get("min_interval_minutes", cfg.limit_min_interval_minutes)
+            breaking_threshold = delivery.get("breaking_threshold", cfg.score_breaking_threshold)
 
             state = self._standing_state.setdefault(
                 fid,
                 {
                     "last_push_at": None,
                     "accumulated_count": 0,
+                    "pushed_article_ids": set(),
                 },
             )
 
-            # Count new high-quality scores since last check
+            # Only consider scores for articles we have NOT already pushed
             scores = await self._blackboard.get_scores_for_filter(fid)
-            high_scores = [s for s in scores if s.get("score", 0) >= 0.6]
+            pushed_set: set[str] = state["pushed_article_ids"]
+            new_scores = [s for s in scores if s.get("article_id") not in pushed_set]
 
+            high_scores = [s for s in new_scores if s.get("score", 0) >= cfg.score_high_score]
             state["accumulated_count"] = len(high_scores)
 
             last_push = state["last_push_at"]
@@ -358,14 +387,14 @@ class EditorAgent(Agent):
                 elapsed = (now - datetime.fromisoformat(last_push)).total_seconds() / 60
                 interval_ok = elapsed >= min_interval_minutes
 
-            # Breaking news: any single article above threshold
-            breaking = any(s.get("score", 0) >= breaking_threshold for s in scores)
+            # Breaking news: any single *new* article above threshold
+            breaking = any(s.get("score", 0) >= breaking_threshold for s in new_scores)
 
             ready = breaking or (len(high_scores) >= min_items and interval_ok)
 
             if ready:
                 user_id = f.get("user_id", "default_user")
-                max_items = delivery.get("max_items", 10)
+                max_items = delivery.get("max_items", cfg.limit_bundle_max_items)
                 bundle = await self._compose_bundle(fid, user_id, "standing_push", max_items)
 
                 if bundle:
@@ -379,6 +408,15 @@ class EditorAgent(Agent):
                         bundle["bundle_id"],
                         fid,
                     )
+
+                    # Update watermark with pushed article IDs (cap to avoid unbounded growth)
+                    pushed_ids = {a["article_id"] for a in bundle.get("articles", [])}
+                    state["pushed_article_ids"].update(pushed_ids)
+                    if len(state["pushed_article_ids"]) > cfg.limit_standing_push_ids:
+                        # Drop oldest IDs by reinserting the most recent
+                        state["pushed_article_ids"] = set(
+                            list(state["pushed_article_ids"])[-cfg.limit_standing_push_ids :]
+                        )
 
                     state["last_push_at"] = now.isoformat()
                     state["accumulated_count"] = 0
@@ -412,14 +450,14 @@ class EditorAgent(Agent):
             return
 
         delivery = filter_.get("delivery", {})
-        max_items = delivery.get("max_items", 10)
+        max_items = delivery.get("max_items", self._config.limit_bundle_max_items)
         bundle = await self._compose_bundle(req.filter_id, req.user_id, "one_off", max_items)
 
         if bundle:
             reply = Message(to=self._clerk_jid)
             reply.set_metadata("performative", "inform")
             reply.set_metadata("ontology", ONTOLOGY_EDITOR)
-            reply.body = json.dumps(BundleDeliveryMessage(**bundle).model_dump())
+            reply.body = json.dumps(BundleDeliveryMessage(**bundle, request_id=req.request_id).model_dump())
             await behaviour.send(reply)
         else:
             fail = BundleFailureMessage(
@@ -447,6 +485,7 @@ class EditorAgent(Agent):
             self._standing_state[reg.filter_id] = {
                 "last_push_at": None,
                 "accumulated_count": 0,
+                "pushed_article_ids": set(),
             }
 
     async def _handle_filter_removed(self, msg: Message) -> None:
@@ -475,7 +514,7 @@ class EditorAgent(Agent):
     class StandingWatchBehaviour(CyclicBehaviour):
         async def run(self) -> None:
             await self.agent._check_standing_filters(self)
-            await asyncio.sleep(30)
+            await asyncio.sleep(self.agent._config.interval_standing_watch)
 
     class MessageRouter(CyclicBehaviour):
         async def run(self) -> None:
