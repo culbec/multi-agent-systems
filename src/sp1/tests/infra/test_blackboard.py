@@ -217,3 +217,61 @@ def test_get_source_health_unknown() -> None:
         assert await bb.get_source_health("missing") is None
 
     asyncio.run(_run())
+
+
+def test_message_log() -> None:
+    async def _run() -> None:
+        bb = Blackboard()
+        await bb.log_message("sender1", "receiver1", "inform", "hello world")
+        await bb.log_message("sender2", "receiver2", "request", "get data")
+        logs = await bb.snapshot_message_log(limit=10)
+        assert len(logs) == 2
+        assert logs[0]["sender"] == "sender1"
+        assert logs[0]["performative"] == "inform"
+        assert logs[1]["body_preview"] == "get data"
+
+    asyncio.run(_run())
+
+
+def test_bundle_registry_record_and_get() -> None:
+    async def _run() -> None:
+        bb = Blackboard()
+        bundle = {"bundle_id": "b1", "filter_id": "f1", "articles": [{"title": "Test"}]}
+        await bb.record_bundle(bundle)
+        retrieved = await bb.get_bundle("b1")
+        assert retrieved is not None
+        assert retrieved["bundle_id"] == "b1"
+        assert retrieved["filter_id"] == "f1"
+
+    asyncio.run(_run())
+
+
+def test_bundle_registry_maxlen_eviction() -> None:
+    async def _run() -> None:
+        bb = Blackboard()
+        # Override maxlen to a small number for testing
+        bb._bundle_registry_maxlen = 3
+        for i in range(5):
+            await bb.record_bundle({"bundle_id": f"b{i}", "filter_id": "f1", "articles": []})
+        snapshot = await bb.snapshot_bundle_registry()
+        assert len(snapshot) == 3
+        # Oldest (b0, b1) should have been evicted
+        ids = {b["bundle_id"] for b in snapshot}
+        assert "b0" not in ids
+        assert "b1" not in ids
+        assert "b4" in ids
+
+    asyncio.run(_run())
+
+
+def test_bundle_registry_filter_lookup() -> None:
+    async def _run() -> None:
+        bb = Blackboard()
+        await bb.record_bundle({"bundle_id": "b1", "filter_id": "f1", "articles": []})
+        await bb.record_bundle({"bundle_id": "b2", "filter_id": "f2", "articles": []})
+        await bb.record_bundle({"bundle_id": "b3", "filter_id": "f1", "articles": []})
+        f1_bundles = await bb.get_bundles_for_filter("f1")
+        assert len(f1_bundles) == 2
+        assert {b["bundle_id"] for b in f1_bundles} == {"b1", "b3"}
+
+    asyncio.run(_run())
