@@ -1,6 +1,8 @@
 ### OURS
 **/data/*
 !**/data/rss.example.jsonc
+src/sp2/data/*
+!src/sp2/data/config.example.json
 
 **/.env
 
@@ -182,7 +184,7 @@ dmypy.json
 .pyre/
 
 # pytype static type analyzer
-.pytype/
+.pyre/
 
 # Cython debug symbols
 cython_debug/
