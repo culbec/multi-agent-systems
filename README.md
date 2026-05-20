@@ -44,7 +44,15 @@ The architecture follows a **hub-and-spoke** topology with a shared **blackboard
 
 ### SP2 - Scratch Framework / DAI Technique
 
-**TODO: Disaster Grid**
+SP2 implements the **Intelligent Disaster Grid Response System** from scratch in Python. It simulates a distributed grid of emergency situations where autonomous **Rescue Agents** must navigate dynamically generated, obstacle-strewn terrain to respond to active distress signals, coordinated by a **Coordinator Agent** and orchestrated by an **Environment Agent**.
+
+Key Technical Highlights:
+- **Scratch-built Agent Architecture** — No heavyweight third-party agent framework; agents communicate asynchronously using direct, in-process, lock-free double-buffered message queues (`collections.deque`).
+- **Distributed Learning Pathfinding (LRTA\*)** — Agents run the *Learning Real-Time A\** algorithm, performing asynchronous dynamic programming updates to build a target-indexed heuristic table (`(current_cell, target_cell) -> cost-to-go`) on the fly, guaranteeing h-monotonicity (values never decrease) and preventing local minimum traps.
+- **P2P Collision Avoidance & Reservations** — Agents coordinate cellular movements using a peer-to-peer reservation protocol with deterministic tie-breaking (lower agent IDs wait).
+- **Dynamic Distress & Distress Cycles** — Custom Poisson signal injection scheduled dynamically; previously resolved cells can be hit by distress signals again, automatically recycling pathfinding priorities.
+- **Cooperative Base-Returning** — Idle or free rescue agents do not act as roadblocks; instead, they dynamically generate LRTA\* paths back to the base. They act as dynamic objects that can yield to active rescuers and leave trails, leaving paths open.
+- **Rich Visual HUD & Diagnostics Dashboard** — A real-time Pygame GUI featuring togglable overlays for learning heatmaps (`[H]`), agent movement trails (`[T]`), yellow cellular reservations (`[R]`), message logs (`[M]`), interactive playback scrubbing, dynamic agent detail inspect cards, and complete config hot-reloading.
 
 ---
 
@@ -250,4 +258,82 @@ Use the following commands to access information on how to use `ruff` and `ty` f
 ruff --help
 ty --help
 ```
+
+---
+
+## SP2 Specification
+
+### Running SP2 (Intelligent Disaster Response)
+
+SP2 is a fully self-contained multi-agent simulation framework that runs instantly out of the box with zero third-party dependencies besides standard virtual environment tools.
+
+#### Interactive GUI Mode (Default with Hot-Reloading)
+Launches the Pygame visual playback interface, metrics HUD, and side panel:
+
+```bash
+# Simply run the main entry point
+PYTHONPATH=. uv run src/sp2/main.py
+```
+
+*Note: By default, this loads the config parameters inside `src/sp2/data/config.json`. If you keep the app running in one corner of your screen, open `src/sp2/data/config.json` in your IDE, change any parameter (e.g. `agent_count`, `rows` or `cols`), and hit save — the Pygame window will instantly **hot-reload and update the UI in real-time!***
+
+To run pointing to a custom configuration file of your choice:
+```bash
+PYTHONPATH=. uv run src/sp2/main.py --config src/sp2/data/config.example.json
+```
+
+#### Headless CLI Mode (Command-Line)
+Runs the simulation to completion immediately at maximum speed, prints an extensive analytical statistics summary of the results, and writes the frame replay to disk:
+
+```bash
+PYTHONPATH=. uv run src/sp2/main.py --headless
+```
+
+To customize parameters directly via the CLI in headless mode:
+```bash
+PYTHONPATH=. uv run src/sp2/main.py --headless --rows 20 --cols 20 --agents 5 --signals 8 --density 0.15 --output src/sp2/data/my_replay.json
+```
+
+#### Executing the Test Suite
+We maintain a robust suite of unit and integration tests covering pathfinding, messaging, simulation states, and metrics collections:
+
+```bash
+PYTHONPATH=. uv run pytest src/sp2/tests/
+```
+
+### Core Architecture
+
+The system coordinates the life cycle of emergency distress signals and rescuer routing through three key cooperating roles:
+
+```
+                  +-----------------------------------+
+                  |        CoordinatorAgent           |
+                  |  - Assigns pending signals        |
+                  |  - Tracks idle rescuers           |
+                  +-----------------+-----------------+
+                                    |
+            Assign / Free Message   |   Assign / Free Message
+                        +-----------+-----------+
+                        |                       |
+                  +-----v-----+           +-----v-----+
+                  |RescueAgent|           |RescueAgent|  ...
+                  | (Rescue)  |           | (Rescue)  |
+                  +-----+-----+           +-----+-----+
+                        |                       |
+                        +-----------+-----------+
+                                    |
+         Neighbor Query / Move /    |   P2P Reservation Message
+         Heuristic Update Message   |   (Lower Agent ID waits)
+                        +-----------+-----------+
+                        |                       |
+                  +-----v-----+           +-----v-----+
+                  |   Grid    | <-------  |Environment|
+                  | (Domain)  |           |  (State)  |
+                  +-----------+           +-----------+
+```
+
+1. **Environment Agent (`EnvironmentAgent`)**: Orchestrates the physical reality of the grid, manages cell properties, maintains the shared target-indexed heuristic table, and acts as the structural state-tracker for all agents and dynamic signals.
+2. **Coordinator Agent (`CoordinatorAgent`)**: Performs nearest-first optimal task distribution. It processes distress requests, manages active rescuer assignments, tracks idle agents, and gracefully fires simulation termination protocols once all situations are resolved.
+3. **Rescue Agent (`RescueAgent`)**: Operates independently. It communicates with the environment to fetch neighbor costs, updates target-specific local cost-to-go matrices using the LRTA\* step, executes peer-to-peer cellular conflict negotiations, and safely navigates back to base when idle to keep traffic paths unblocked.
+
 
