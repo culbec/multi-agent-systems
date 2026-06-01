@@ -96,16 +96,11 @@ class GridRenderer:
         # Determine agent positions and active reservations in this frame
         agent_positions = {a["id"]: a["position"] for a in frame["agents"]}
 
-        # Retrieve reservations from message logs of this tick
-        reserved_cells = set()
-        for msg in frame["messages_this_tick"]:
-            if msg["type"] == "RESERVE" and "cell" in msg["payload"]:
-                # payload['cell'] is ((row, col), ...)
-                # Let's check how cell is formatted: in messages_formatted we serialized Cell object
-                cell_val = msg["payload"]["cell"]
-                if isinstance(cell_val, list) and len(cell_val) > 0:
-                    r, c = cell_val[0][0]
-                    reserved_cells.add((r, c))
+        # Reservations are world state now (the Environment's reservation table,
+        # Decision D1, Option A), not inter-agent messages. The Simulation
+        # snapshots the cells reserved this tick into the frame before clearing
+        # them, so the overlay reads them directly rather than scraping the log.
+        reserved_cells = {(r, c) for r, c in frame.get("reservations", [])}
 
         # 2. Draw static cells: FREE, OBSTACLE
         obstacles_set = set(obstacle_coords)
@@ -194,6 +189,9 @@ class GridRenderer:
         # Active signals (with pulsing animation using a sine wave alpha)
         pulse_val = abs(math.sin(pygame.time.get_ticks() / 300.0))
         glow_alpha = int(100 + 155 * pulse_val)
+        # Which agent is assigned to each active signal (from the coordinator).
+        signal_assignments = {(r, c): aid for r, c, aid in frame.get("signal_assignments", [])}
+        agent_count = len(frame["agents"])
         for r, c in active_signals:
             if (r, c) in cell_rects:
                 s_rect = cell_rects[(r, c)]
@@ -203,6 +201,18 @@ class GridRenderer:
                 glow_surf = pygame.Surface((cell_size, cell_size), pygame.SRCALPHA)
                 glow_surf.fill((231, 76, 60, glow_alpha))
                 surface.blit(glow_surf, s_rect.topleft)
+
+                # Badge the responding agent's id (in that agent's colour) so the
+                # signal->agent assignment is readable from the board.
+                assigned_aid = signal_assignments.get((r, c))
+                if assigned_aid is not None:
+                    badge_r = max(7, int(cell_size * 0.18))
+                    bx, by = s_rect.right - badge_r - 2, s_rect.top + badge_r + 2
+                    pygame.draw.circle(surface, self.get_agent_color(assigned_aid, agent_count), (bx, by), badge_r)
+                    pygame.draw.circle(surface, pygame.Color(COLOR_HIGHLIGHT_BLACK), (bx, by), badge_r, 1)
+                    badge_font = pygame.font.SysFont("Arial", max(8, int(cell_size * 0.26)), bold=True)
+                    badge_text = badge_font.render(str(assigned_aid), True, pygame.Color(COLOR_HIGHLIGHT_WHITE))
+                    surface.blit(badge_text, badge_text.get_rect(center=(bx, by)))
 
         # 6. Draw yellow reservation borders if enabled
         if self.show_reservations:

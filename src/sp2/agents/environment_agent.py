@@ -1,19 +1,36 @@
+"""DEPRECATED -- pre-PAGE design.
+
+``EnvironmentAgent`` modeled the environment as a third message-passing agent.
+The PAGE refactor replaced it with :class:`src.sp2.environment.Environment` (a
+non-agent state authority). This module is retained only as a reference and is
+**not** wired into the live system: it is not exported from ``agents`` and the
+Simulation does not construct it. It is kept importable via the legacy message
+types in ``src.sp2.messages.legacy_messages``.
+"""
+
+import warnings
+
 from src.sp2.agents.agent import Agent
 from src.sp2.domain.cell import Cell, CellType
 from src.sp2.domain.grid import Grid
 from src.sp2.domain.signal import Signal
-from src.sp2.messages.messages import (
-    ClearedMessage,
+from src.sp2.messages.legacy_messages import (
     HUpdateMessage,
     MoveMessage,
     NeighborQueryMessage,
     NeighborResponseMessage,
     NewSignalMessage,
 )
+from src.sp2.messages.messages import ClearedMessage
 
-
+# TODO: remove this entire class
 class EnvironmentAgent(Agent):
     def __init__(self, agent_id: int, grid: Grid, coordinator: Agent):
+        warnings.warn(
+            "EnvironmentAgent is deprecated; use src.sp2.environment.Environment.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(agent_id)
         self.grid = grid
         self.coordinator = coordinator
@@ -55,8 +72,14 @@ class EnvironmentAgent(Agent):
         self.active_signals = {sig.signal_id: sig for sig in signals}
         self.resolved_signals = []
 
-    def step(self, tick: int) -> None:
-        """Process inbox messages."""
+    def select_actions(self, tick: int) -> list:
+        """Deprecated: the legacy environment never participated in the
+        perceive -> decide -> act loop. Retained only to satisfy the abstract
+        base; the live system uses Environment instead."""
+        raise NotImplementedError("EnvironmentAgent is deprecated; use Environment.")
+
+    def step(self, tick: int) -> None:  # type: ignore[override]
+        """Process inbox messages (legacy message-round-trip design)."""
         messages = self.drain_inbox()
         for msg in messages:
             if isinstance(msg, ClearedMessage):
