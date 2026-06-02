@@ -16,6 +16,7 @@ from src.sp2.perceptions.sensors import (
 if TYPE_CHECKING:  # pragma: no cover
     from src.sp2.actions.action import Action
     from src.sp2.agents.agent import Agent
+    from src.sp2.agents.coordinator_agent import CoordinatorAgent
     from src.sp2.perceptions.percept import Percept
 
 # Tolerance for the h-monotonicity tripwire (guards against float noise).
@@ -121,7 +122,8 @@ class Environment:
     # see: S -> P
     def get_percept(self, agent: "Agent", tick: int) -> "Percept":
         """Build the percept for ``agent`` from the world State and its vantage."""
-        if type(agent).__name__ == "CoordinatorAgent":
+        from src.sp2.agents.coordinator_agent import CoordinatorAgent
+        if isinstance(agent, CoordinatorAgent):
             return CoordinatorPercept(
                 new_signals=self._new_signal_sensor.sense(self, agent, tick),
                 messages=self._inbox_sensor.sense(self, agent, tick),
@@ -173,9 +175,15 @@ class Environment:
             s.grid.set_cell_type(from_cell, CellType.BASE)
         elif any(sig.location == from_cell for sig in s.active_signals.values()):
             s.grid.set_cell_type(from_cell, CellType.SIGNAL)
+        elif any(sig.location == from_cell for sig in s.resolved_signals):
+            s.grid.set_cell_type(from_cell, CellType.SIGNAL_RESOLVED)
         else:
             s.grid.set_cell_type(from_cell, CellType.FREE)
-        s.grid.set_cell_type(to_cell, CellType.AGENT)
+
+        if to_cell == s.base:
+            s.grid.set_cell_type(to_cell, CellType.BASE)
+        else:
+            s.grid.set_cell_type(to_cell, CellType.AGENT)
 
     def update_heuristic(self, cell: Cell, target: Cell, value: float) -> None:
         s = self.state
@@ -196,7 +204,7 @@ class Environment:
                 s.resolved_signals.append(sig)
                 del s.active_signals[signal_id]
                 resolved = sig
-        s.grid.set_cell_type(signal_cell, CellType.FREE)
+        s.grid.set_cell_type(signal_cell, CellType.SIGNAL_RESOLVED)
         return resolved
 
     def reserve(self, agent_id: int, cell: Cell, tick: int) -> None:

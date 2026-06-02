@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 
 from src.sp2.actions.actions import AssignAction, TerminateAction
 from src.sp2.agents.agent import Agent
+from src.sp2.domain.cell import Cell
 from src.sp2.domain.signal import Signal
 from src.sp2.messages.messages import ClearedMessage, FreeMessage, Message
 
@@ -21,7 +22,7 @@ class CoordinatorAgent(Agent):
         self.agent_registry = {a.agent_id: a for a in rescue_agents}
 
         self.pending_signals: list[Signal] = []
-        self.idle_agents: dict[int, "object"] = {}  # agent_id -> position cell
+        self.idle_agents: dict[int, Cell] = {}  # agent_id -> position cell
         self.assignments: dict[int, Signal] = {}  # agent_id -> Signal
         self.known_signal_ids: set[int] = set()  # for the new-signal diff (D2)
         self.no_more_dynamic_signals = True

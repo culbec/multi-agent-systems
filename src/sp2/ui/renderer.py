@@ -192,6 +192,7 @@ class GridRenderer:
         # Which agent is assigned to each active signal (from the coordinator).
         signal_assignments = {(r, c): aid for r, c, aid in frame.get("signal_assignments", [])}
         agent_count = len(frame["agents"])
+        badge_font = pygame.font.SysFont("Arial", max(8, int(cell_size * 0.26)), bold=True)
         for r, c in active_signals:
             if (r, c) in cell_rects:
                 s_rect = cell_rects[(r, c)]
@@ -210,7 +211,6 @@ class GridRenderer:
                     bx, by = s_rect.right - badge_r - 2, s_rect.top + badge_r + 2
                     pygame.draw.circle(surface, self.get_agent_color(assigned_aid, agent_count), (bx, by), badge_r)
                     pygame.draw.circle(surface, pygame.Color(COLOR_HIGHLIGHT_BLACK), (bx, by), badge_r, 1)
-                    badge_font = pygame.font.SysFont("Arial", max(8, int(cell_size * 0.26)), bold=True)
                     badge_text = badge_font.render(str(assigned_aid), True, pygame.Color(COLOR_HIGHLIGHT_WHITE))
                     surface.blit(badge_text, badge_text.get_rect(center=(bx, by)))
 

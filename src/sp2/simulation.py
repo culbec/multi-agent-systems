@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from src.sp2.agents.agent import Agent
 from src.sp2.agents.coordinator_agent import CoordinatorAgent
 from src.sp2.agents.rescue_agent import RescueAgent
@@ -7,6 +9,9 @@ from src.sp2.domain.grid import Grid
 from src.sp2.domain.signal import Signal
 from src.sp2.environment.environment import Environment
 from src.sp2.utils.stats import compute_statistics
+
+if TYPE_CHECKING:
+    from src.sp2.messages.messages import Message
 
 
 class Simulation:
@@ -22,7 +27,7 @@ class Simulation:
         self.termination_reason: str = "Running"
         self.frames: list[dict] = []
         self.dynamic_signal_queue: list[tuple[int, int, int]] = []
-        self.tick_messages: list = []
+        self.tick_messages: "list[Message]" = []
         # Signal id minting lives in the Simulation now (it owns the dynamic
         # queue); the Environment and Coordinator no longer mint ids.
         self.next_signal_id: int = 1
@@ -33,7 +38,7 @@ class Simulation:
         self.terminated = False
         self.termination_reason = "Running"
         self.frames.clear()
-        self.tick_messages = []
+        self.tick_messages: "list[Message]" = []
 
         # Enable message logging
         Agent.message_callback = self.tick_messages.append
