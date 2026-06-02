@@ -1,4 +1,3 @@
-# Actions package: the effectors of the env: S x A -> S seam.
 from src.sp2.actions.action import Action, CommunicativeAction, EnvironmentAction
 from src.sp2.actions.actions import (
     AssignAction,

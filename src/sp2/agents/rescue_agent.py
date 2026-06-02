@@ -42,11 +42,9 @@ class RescueAgent(Agent):
         self.coordinator = coordinator
         self.peers = peers
 
-    # ------------------------------------------------------------------ #
     # Perception focusing: report the destination implied by the agent's
     # current orders *plus* any just-received in this tick's messages, so the
-    # Environment can focus the neighbourhood sensor on the right target.
-    # ------------------------------------------------------------------ #
+    # environment can focus the neighborhood sensor on the right target
     def intended_destination(self, messages: tuple[Message, ...], base: Cell | None) -> Cell | None:
         target = self.target
         halted = self.halted
@@ -61,9 +59,7 @@ class RescueAgent(Agent):
             return None
         return target if target is not None else base
 
-    # ------------------------------------------------------------------ #
-    # Decision: run goals in precedence order, concatenating their actions.
-    # ------------------------------------------------------------------ #
+    # Decision: run goals in precedence order, concatenating their actions
     def select_actions(self, tick: int) -> "list[Action]":
         percept = self.percept
         actions: "list[Action]" = []
@@ -80,9 +76,7 @@ class RescueAgent(Agent):
         actions += self.goal_navigate(tick)
         return actions
 
-    # ------------------------------------------------------------------ #
-    # Goals (no sensing, no world mutation -- they only return Actions).
-    # ------------------------------------------------------------------ #
+    # Goals (no sensing, no world mutation, they only return Actions)
     def goal_handle_inbox(self, messages: tuple[Message, ...]) -> "list[Action]":
         actions: "list[Action]" = []
         for msg in messages:
@@ -125,7 +119,7 @@ class RescueAgent(Agent):
             return [WaitAction()]
 
         # Seed current_h from the table value (not Manhattan), so the learned,
-        # monotone estimate is never reset below the stored value.
+        # monotone estimate is never reset below the stored value
         if self.current_h is None:
             self.current_h = (
                 percept.position_h

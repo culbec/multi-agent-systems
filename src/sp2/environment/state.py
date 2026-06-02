@@ -25,7 +25,7 @@ class State:
     grid: Grid
     base: Cell | None = None
     # agent_id -> cell. Authoritative position registry (several agents may
-    # share the base cell, so this maps per-agent rather than per-cell).
+    # share the base cell, so this maps per-agent rather than per-cell)
     positions: dict[int, Cell] = field(default_factory=dict)
     # (cell, target) -> learned h-value
     heuristic_table: dict[tuple[Cell, Cell], float] = field(default_factory=dict)

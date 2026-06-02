@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from src.sp2.environment.environment import Environment
 
 
-# Environment actions: mutate the world (and the acting agent's memory)
 class MoveAction(EnvironmentAction):
     """Move the agent one cell. Acts on the world (occupancy + cell types via
     ``env.move``) *and* on the agent's own memory (current_h + movement trail)."""
@@ -61,7 +60,7 @@ class ReserveAction(EnvironmentAction):
     def execute(self, env: "Environment", agent: "Agent", tick: int) -> None:
         env.reserve(agent.agent_id, self.cell, self.reserve_tick)
 
-    def __str__(self) -> str:  # pragma: no cover
+    def __str__(self) -> str:
         return f"RESERVE {self.cell}@{self.reserve_tick}"
 
 
@@ -80,11 +79,10 @@ class ClearSignalAction(EnvironmentAction):
             agent.send_message(peer, cleared)
         agent.send_message(agent.coordinator, cleared)
 
-    def __str__(self) -> str:  # pragma: no cover
+    def __str__(self) -> str:
         return f"CLEAR {self.signal_cell}"
 
 
-# Communicative actions: send a surviving inter-agent message.
 class ReportFreeAction(CommunicativeAction):
     """Tell the coordinator this agent is available."""
 
@@ -102,7 +100,7 @@ class ReportFreeAction(CommunicativeAction):
         agent.send_message(agent.coordinator, free)
         agent.free_sent = True
 
-    def __str__(self) -> str:  # pragma: no cover
+    def __str__(self) -> str:
         return f"REPORT_FREE {self.position}"
 
 
@@ -119,7 +117,7 @@ class AssignAction(CommunicativeAction):
         )
         agent.send_message(agent.agent_registry[self.target_agent_id], assign)
 
-    def __str__(self) -> str:  # pragma: no cover
+    def __str__(self) -> str:
         return f"ASSIGN {self.target_agent_id}->{self.target}"
 
 
@@ -132,11 +130,10 @@ class TerminateAction(CommunicativeAction):
                 rescue, TerminateMessage(sender_id=agent.agent_id, receiver_id=rescue.agent_id, tick=tick)
             )
 
-    def __str__(self) -> str:  # pragma: no cover
+    def __str__(self) -> str:
         return "TERMINATE"
 
 
-# Control action: yield this tick.
 class WaitAction(EnvironmentAction):
     """Yield: no world effect, just record that the agent waited."""
 

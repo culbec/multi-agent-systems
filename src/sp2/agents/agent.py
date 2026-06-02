@@ -28,7 +28,7 @@ class Agent(ABC):
         self.inbox: deque[Message] = deque()
         self.percept: "Percept | None" = None
 
-    # -- inter-agent messaging (unchanged) --------------------------------- #
+    # inter-agent messaging
     def send_message(self, receiver: "Agent", message: Message) -> None:
         """Post a message directly to another agent's inbox."""
         receiver.inbox.append(message)
@@ -41,7 +41,7 @@ class Agent(ABC):
         self.inbox.clear()
         return messages
 
-    # -- the sense -> decide -> act cycle ---------------------------------- #
+    # the sense -> decide -> act cycle
     def see(self, percept: "Percept") -> None:
         """Receive a percept and cache it; subclasses may also update internal
         state here."""

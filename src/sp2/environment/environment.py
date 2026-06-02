@@ -19,7 +19,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from src.sp2.agents.coordinator_agent import CoordinatorAgent
     from src.sp2.perceptions.percept import Percept
 
-# Tolerance for the h-monotonicity tripwire (guards against float noise).
+# Tolerance for the h-monotonicity tripwire (guards against float noise)
 _H_EPSILON = 1e-9
 
 
@@ -41,14 +41,12 @@ class Environment:
 
     def __init__(self, grid: Grid):
         self.state = State(grid=grid)
-        # Sensors compose each agent's percept. Stateless; reused every tick.
+        # Sensors compose each agent's percept; stateless, reused every tick
         self._neighbor_sensor = NeighborSensor()
         self._reservation_sensor = ReservationSensor()
         self._inbox_sensor = InboxSensor()
         self._new_signal_sensor = NewSignalSensor()
 
-    # Convenience views onto the State (kept so existing readers -- frame
-    # collection, stats, main.py -- keep working against the Environment)
     @property
     def grid(self) -> Grid:
         return self.state.grid
@@ -69,7 +67,6 @@ class Environment:
     def resolved_signals(self) -> list[Signal]:
         return self.state.resolved_signals
 
-    # Initialization (ported verbatim from EnvironmentAgent.initialize)
     def initialize(self, signals: list[Signal], base: Cell, rescue_agent_positions: dict[int, Cell]) -> None:
         s = self.state
         s.base = base
@@ -97,7 +94,6 @@ class Environment:
         s.resolved_signals = []
         s.reservations = {}
 
-    # Accessors (read-only; used by the sensors)
     def passable_neighbors(self, cell: Cell) -> list[Cell]:
         return self.state.grid.get_passable_neighbors(cell)
 
@@ -129,7 +125,7 @@ class Environment:
                 messages=self._inbox_sensor.sense(self, agent, tick),
             )
 
-        # Rescue agent. Drain the inbox first so the neighborhood can be focused
+        # Rescue agent: rain the inbox first so the neighborhood can be focused
         # on the destination implied by any orders received this tick
         messages = self._inbox_sensor.sense(self, agent, tick)
         destination = agent.intended_destination(messages, self.base)
@@ -160,8 +156,7 @@ class Environment:
     # Guarded mutators (called by Action objects; enforce the invariants)
     def move(self, agent_id: int, from_cell: Cell, to_cell: Cell) -> None:
         s = self.state
-        # Single-occupancy tripwire. The base may legitimately hold several
-        # idle agents, so it is exempt.
+        # Single-occupancy tripwire. The base is a special case: it may hold several idle agents
         occupant = s.occupant(to_cell)
         assert to_cell == s.base or occupant is None or occupant == agent_id, (
             f"single-occupancy violated: agent {agent_id} -> {to_cell} held by agent {occupant}"
@@ -170,7 +165,6 @@ class Environment:
         s.positions[agent_id] = to_cell
 
         # Restore the vacated cell's type, then mark the destination occupied
-        # (ported from the old MoveMessage branch)
         if from_cell == s.base:
             s.grid.set_cell_type(from_cell, CellType.BASE)
         elif any(sig.location == from_cell for sig in s.active_signals.values()):

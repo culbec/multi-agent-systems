@@ -28,8 +28,7 @@ class Simulation:
         self.frames: list[dict] = []
         self.dynamic_signal_queue: list[tuple[int, int, int]] = []
         self.tick_messages: "list[Message]" = []
-        # Signal id minting lives in the Simulation now (it owns the dynamic
-        # queue); the Environment and Coordinator no longer mint ids.
+        # Signal id minting lives in the Simulation now (it owns the dynamic queue)
         self.next_signal_id: int = 1
 
     def setup(self) -> None:
@@ -56,10 +55,10 @@ class Simulation:
         for i, (r, c) in enumerate(self.config.initial_signals):
             signals.append(Signal(signal_id=i + 1, location=self.grid.get_cell(r, c), created_at_tick=0))
 
-        # 3. Create the Environment (plain state authority, not an agent).
+        # 3. Create the Environment (plain state authority, not an agent)
         self.environment = Environment(self.grid)
 
-        # 4. Create Rescue Agents (all start at base; position is world state).
+        # 4. Create Rescue Agents (all start at base; position is world state)
         self.rescue_agents = []
         for i in range(self.config.agent_count):
             agent = RescueAgent(agent_id=i, start_position=base_cell, coordinator=None, peers=[])
@@ -68,7 +67,7 @@ class Simulation:
         # 5. Create Coordinator Agent
         self.coordinator = CoordinatorAgent(agent_id=-2, rescue_agents=self.rescue_agents)
 
-        # 6. Wire references (the Environment talks to no one).
+        # 6. Wire references (the Environment talks to no one)
         for agent in self.rescue_agents:
             agent.coordinator = self.coordinator
             agent.peers = [peer for peer in self.rescue_agents if peer.agent_id != agent.agent_id]
@@ -94,8 +93,7 @@ class Simulation:
         self.tick_messages.clear()
         Agent.message_callback = self.tick_messages.append
 
-        # 1. Inject dynamic signals scheduled for this tick (no message -- the
-        #    coordinator's NewSignalSensor diffs them when it perceives below).
+        # 1. Inject dynamic signals scheduled for this tick
         while self.dynamic_signal_queue and self.dynamic_signal_queue[0][2] == self.tick:
             r, c, _ = self.dynamic_signal_queue.pop(0)
             signal = Signal(
@@ -109,25 +107,25 @@ class Simulation:
         if not self.dynamic_signal_queue:
             self.coordinator.no_more_dynamic_signals = True
 
-        # 2. Coordinator: perceive -> decide -> act (assignments dispatched now).
+        # 2. Coordinator: perceive -> decide -> act (assignments dispatched now)
         self.coordinator.step(self.environment, self.tick)
 
-        # 3. Record positions before the rescue pass (waiting/moving detection).
+        # 3. Record positions before the rescue pass (waiting/moving detection)
         positions_before = {a.agent_id: self.environment.position_of(a.agent_id) for a in self.rescue_agents}
 
         # 4. Single ordered pass: rescue agents act in descending id order, so a
         #    higher-id agent reserves/moves before a lower-id agent perceives and
-        #    yields -- guaranteeing no dual occupancy without a sub-phase split.
+        #    yields, guaranteeing no dual occupancy without a sub-phase split
         for agent in sorted(self.rescue_agents, key=lambda a: a.agent_id, reverse=True):
             agent.step(self.environment, self.tick)
 
         # 5. Snapshot the cells reserved this tick (world state now, not
-        #    messages), then run reservation housekeeping (Decision D1, Option A).
+        # messages), then run reservation housekeeping (Decision D1, Option A)
         reserved_cells = self.environment.reservations(self.tick)
         self.environment.clear_reservations(self.tick)
 
         # 6. Record frame (positions_before assists state determination;
-        #    reserved_cells lets the UI overlay reservations).
+        #    reserved_cells lets the UI overlay reservations)
         self.frames.append(self.collect_frame(self.tick, positions_before, reserved_cells))
 
         # 7. Check termination
@@ -160,7 +158,7 @@ class Simulation:
                 row_types.append(int(self.grid.get_cell_type(self.grid.get_cell(r, c))))
             grid_types.append(row_types)
 
-        # Rescue agents info (position is world state -- read it from the env).
+        # Rescue agents info (position is world state, read it from the env)
         agents_info = []
         for agent in self.rescue_agents:
             position = self.environment.position_of(agent.agent_id)
@@ -194,7 +192,7 @@ class Simulation:
 
         # Which agent is assigned to each active signal, from the coordinator's
         # authoritative assignment table (agent_id -> Signal). JSON-friendly
-        # rows [row, col, agent_id]; only signals still active are included.
+        # rows [row, col, agent_id]; only signals still active are included
         active_locations = {sig.location for sig in self.environment.active_signals.values()}
         signal_assignments = [
             [sig.location.row, sig.location.col, aid]

@@ -31,7 +31,7 @@ class CoordinatorAgent(Agent):
         self.pending_signals = list(initial_signals)
         self.idle_agents.clear()
         self.assignments.clear()
-        # Seed known ids from the initial signals so they are not re-flagged new.
+        # Seed known ids from the initial signals so they are not re-flagged new
         self.known_signal_ids = {sig.signal_id for sig in initial_signals}
 
     # Decision
