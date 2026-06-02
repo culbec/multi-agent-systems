@@ -8,6 +8,7 @@ class CellType(IntEnum):
     OBSTACLE = 2
     AGENT = 3
     BASE = 4
+    SIGNAL_RESOLVED = 5
 
 
 @dataclass(frozen=True)

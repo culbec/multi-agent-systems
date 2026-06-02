@@ -2,7 +2,7 @@
 name = "multi-agent-systems"
 version = "0.1.0"
 description = "Multi-Agent Systems cooperative course projects"
-authors = [{ name = "culbec", email = "profir.alexx@gmail.com" }]
+authors = [{ name = "culbec", email = "profir.alexx@gmail.com" }, { name = "tudormihaita", email = "tudor.mihaita03@gmail.com"}]
 requires-python = ">=3.12"
 dependencies = [
     "feedparser>=6.0.12",
@@ -28,4 +28,4 @@ dependencies = [
 ignore = ["S101"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["."]
