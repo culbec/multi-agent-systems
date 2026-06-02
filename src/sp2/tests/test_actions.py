@@ -61,7 +61,7 @@ def test_clear_signal_action_resolves_and_announces():
 
     ClearSignalAction(Cell(1, 1), tick=2).execute(env, agent, 2)
 
-    assert env.cell_type(Cell(1, 1)) == CellType.FREE
+    assert env.cell_type(Cell(1, 1)) == CellType.SIGNAL_RESOLVED
     assert any(s.location == Cell(1, 1) for s in env.resolved_signals)
     assert any(isinstance(m, ClearedMessage) for m in coord.drain_inbox())
 

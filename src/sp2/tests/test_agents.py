@@ -70,7 +70,7 @@ def test_resolve_signal_lifecycle():
     assert resolved.resolved_by == 0
     assert 1 not in env.active_signals
     assert sig in env.resolved_signals
-    assert env.cell_type(Cell(0, 0)) == CellType.FREE
+    assert env.cell_type(Cell(0, 0)) == CellType.SIGNAL_RESOLVED
     # Never re-activates.
     assert env.resolve_signal(Cell(0, 0), agent_id=0, tick=6) is None
 

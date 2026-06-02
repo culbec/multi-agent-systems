@@ -28,4 +28,4 @@ dependencies = [
 ignore = ["S101"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["."]

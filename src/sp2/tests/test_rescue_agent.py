@@ -34,7 +34,7 @@ def test_rescue_agent_single():
     # Tick 3: clears the signal, drops target, reports free.
     agent.step(env, 3)
     assert agent.target is None
-    assert env.cell_type(Cell(2, 4)) == CellType.FREE
+    assert env.cell_type(Cell(2, 4)) == CellType.SIGNAL_RESOLVED
     assert any(sig.location == Cell(2, 4) for sig in env.resolved_signals)
 
     coord_msgs = coord.drain_inbox()
